@@ -26,7 +26,7 @@ void Spi_transmit(uint8_t byte)
 //	uint8_t temp[2];
 //	temp[0]=byte;temp[1]=0x00;
 	HAL_GPIO_WritePin(SPI1_SS_GPIO_Port, SPI1_SS_Pin, 0);
-	HAL_SPI_Transmit(&hspi1,&byte, sizeof(byte), 100);
+	HAL_SPI_Transmit(&hspi1,&byte, 1, 100);   /*sizeof byte =1 */
 //	HAL_SPI_Transmit(&hspi1,temp, sizeof(temp), 100);
 	HAL_GPIO_WritePin(SPI1_SS_GPIO_Port, SPI1_SS_Pin, 1);
 
@@ -249,9 +249,9 @@ uint32_t Get_param(uint8_t parameter)
 
 	uint8_t rc_data[1]={0};
 	uint32_t get_data=0;
-	Spi_recieve(rc_data,1);get_data=rc_data[0];	memset(rc_data, '\0', sizeof(rc_data));
-	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0]; memset(rc_data, '\0', sizeof(rc_data));
-	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0];  memset(rc_data, '\0', sizeof(rc_data));
+	Spi_recieve(rc_data,1);get_data=rc_data[0];rc_data[0]=0;	//memset(rc_data, '\0', sizeof(rc_data));
+	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0];rc_data[0]=0; //memset(rc_data, '\0', sizeof(rc_data));
+	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0];rc_data[0]=0; // memset(rc_data, '\0', sizeof(rc_data));
 
 
 
@@ -395,8 +395,8 @@ uint32_t GET_STATUS(void)
 
 	uint8_t rc_data[1]={0};
 	uint32_t get_data=0;
-	Spi_recieve(rc_data,1);get_data=rc_data[0];	memset(rc_data, '\0', sizeof(rc_data));
-	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0]; memset(rc_data, '\0', sizeof(rc_data));
+	Spi_recieve(rc_data,1);get_data=rc_data[0];rc_data[0]=0;//	memset(rc_data, '\0', sizeof(rc_data));
+	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0];rc_data[0]=0;// memset(rc_data, '\0', sizeof(rc_data));
 
 	return get_data;
 
@@ -411,9 +411,12 @@ unsigned long Read_total_steps()
 
    // total_steps++;
     if (total_steps >= MAX_STEPS) {
-        total_steps -= MAX_STEPS;
+    	uint32_t x=Get_param(L6470_ABS_POS);
+    	RESET_POS();
+    	total_steps=x;
+        total_steps -= x;
         total_revolutions++;
     }
-   return (total_revolutions * MICROSTEPS_PER_STEP * MAX_STEPS + total_steps);
+   return (total_revolutions* MAX_STEPS + total_steps);
 }
 

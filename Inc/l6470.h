@@ -14,7 +14,7 @@
 extern SPI_HandleTypeDef hspi1;
 
 
-#define MAX_STEPS 4194000
+#define MAX_STEPS 4194175 //4194303
 #define MICROSTEPS_PER_STEP 128
 //extern uint32_t total_revolutions;
 //extern uint32_t total_steps;
@@ -26,7 +26,7 @@ extern SPI_HandleTypeDef hspi1;
 #define SetParam_CMD		(0x00)
 #define GetParam_CMD        (0x20)
 #define RUN_CMD 		    (0x50)
-#define STEPCLOCK_CMD       (0x51)
+#define STEPCLOCK_CMD       (0x58)
 #define MOVE_CMD 		    (0x40)
 #define GO_TO_CMD           (0x60)
 #define GO_TO_DIR_CMD 		(0x68)

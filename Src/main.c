@@ -48,6 +48,8 @@ typedef uint8_t crc_t;
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
 
+TIM_HandleTypeDef htim4;
+
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
@@ -61,6 +63,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 //static void Spi_transmit(uint8_t byte);
 //static void Spi_recieve(uint8_t byte[],uint8_t size);
@@ -83,16 +86,23 @@ unsigned long read=0,read2=0;
 //uint8_t buffer[14];
 //char buffer1[9]="hello01\r\n";
 //uint8_t* send_buffer="h-l6470\r\n";
-uint8_t send_buffer[10] = {0x55,'-','l','6','4','7','0','\r','\n',0x01};
-uint8_t Previous_buffer[10];
-uint8_t RECIEVE_VALID_DATA[10];
-uint8_t recieve_buffer[10];
+uint8_t send_buffer[11] = {0x55,'-','l','6','4','7','0','\r','\n',0x00,0x00};
+uint8_t Previous_buffer[11];
+uint8_t RECIEVE_VALID_DATA[11];
+uint8_t recieve_buffer[11];
 
 uint8_t RS_485_Data_validate=0;
-int BUFFER_LENGTH=10;
+int BUFFER_LENGTH=11;
 uint8_t state_of_rs485=1;
 uint8_t counter=0;
-
+HAL_StatusTypeDef uart_state;
+int len=0;
+uint16_t DAMPING =0;
+uint16_t SPEED=0;
+uint16_t sp=0;
+uint8_t sp1=0;
+uint8_t sp2=0;
+uint16_t x=0x1234;
 /* USER CODE END 0 */
 
 /**
@@ -108,7 +118,8 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+
+	HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -125,22 +136,24 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 
+  //send_on_rs485(send_buffer);
   recieve_on_rs485(recieve_buffer,BUFFER_LENGTH);
 
   Spi_init();
-
-  HAL_Delay(1000);
+//HAL_TIM_Base_Start_IT(&htim4);
+HAL_Delay(1000);
 
 
 
   	HARD_HIZ();
     GET_STATUS();
 
-	Set_param(L6470_ACC, 		0xffa, L6470_ACC_LEN);
-	Set_param(L6470_DEC, 		0xffa, L6470_ACC_LEN);
-	Set_param(L6470_MAX_SPEED, 	0x03fc, L6470_MAX_SPEED_LEN);
+	Set_param(L6470_ACC, 		0x0482, L6470_ACC_LEN);//ffa
+	Set_param(L6470_DEC, 		0x0482, L6470_DEC_LEN);
+	Set_param(L6470_MAX_SPEED, 	0x015e, L6470_MAX_SPEED_LEN);//3ff
 	Set_param(L6470_MIN_SPEED, 	0x00, L6470_MIN_SPEED_LEN);
 	Set_param(L6470_FS_SPD, 	0x3ff, L6470_FS_SPD_LEN);
 	Set_param(L6470_KVAL_HOLD, 	0x34, L6470_KVAL_HOLD_LEN);
@@ -157,7 +170,7 @@ int main(void)
 	Set_param(L6470_ALARM_EN, 	0xFF, L6470_ALARM_EN_LEN);
 	Set_param(L6470_CONFIG_A, 	0x2E88, L6470_CONFIG_A_LEN);
 	RESET_POS();
-	GO_UNTIL(ACT0, FORWARD_DIR,step_s_2_Speed(1550) );//15 min //1550 max
+	//GO_UNTIL(ACT0, FORWARD_DIR,step_s_2_Speed(8000) );//15 min //1550 max
 	//Move(FORWARD_DIR,200*128);
 //	HAL_Delay(4000);
 //
@@ -169,7 +182,7 @@ int main(void)
 
 
 
-	//Move(FORWARD_DIR,200*128);
+	//Move(FORWARD_DIR,4194303);
 
 
 
@@ -180,12 +193,44 @@ int main(void)
   while (1)
   {
 
-//	  HAL_Delay(10);
-//	  if(RECIEVE_VALID_DATA[1]== 0x46)
-//	  {
-//		  uint8_t sp = RECIEVE_VALID_DATA[2];
-//		Run(FORWARD_DIR, step_s_2_Speed(sp));
-//	  }
+
+
+	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+	   DAMPING = RECIEVE_VALID_DATA[3];
+	   SPEED = RECIEVE_VALID_DATA[2];
+//	   sp1 = RECIEVE_VALID_DATA[4];
+//	  		  sp2=RECIEVE_VALID_DATA[5];
+//	  		  sp=(sp1<<8)|sp2;
+	  		  sp=((RECIEVE_VALID_DATA[4]<<8)|RECIEVE_VALID_DATA[5]);
+//	  HAL_Delay(20);
+	  if(RECIEVE_VALID_DATA[1]== 'F')
+	  {
+//		   sp = RECIEVE_VALID_DATA[4];
+//		  sp=sp<<8;
+//		  sp|=RECIEVE_VALID_DATA[5];
+		Run(FORWARD_DIR, step_s_2_Speed(sp));
+	  }
+	  else if(RECIEVE_VALID_DATA[1]== 'R')
+	  {
+//		   sp = RECIEVE_VALID_DATA[4];
+//		  sp=sp<<8;
+//		  sp|=RECIEVE_VALID_DATA[5];
+		  Run(BACKWARD_DIR, step_s_2_Speed(sp));
+	  }
+
+	  else if(RECIEVE_VALID_DATA[1]== 'S')
+	 	  {
+		  	  SOFT_STOP();
+//	 		  uint16_t sp = RECIEVE_VALID_DATA[2];
+//	 		  sp=sp<<8;
+//	 		  sp|=RECIEVE_VALID_DATA[3];
+//	 		  Run(BACKWARD_DIR, step_s_2_Speed(sp));
+	 	  }
+	  	  	  send_buffer[1]=0x01;
+			  send_buffer[2]=0x00;
+			  send_buffer[3]=0x01;
+			  send_buffer[4]=0xf4;
+			  send_buffer[5]=0x00;
 
 //	  while(state_of_rs485!=1);
 //	  if(state_of_rs485==1){send_on_rs485(send_buffer);}
@@ -199,8 +244,10 @@ int main(void)
 	//Move(BACKWARD_DIR,200*128);HAL_Delay(2000);
 //	  Run(FORWARD_DIR, step_s_2_Speed(4000));HAL_Delay(500);SOFT_STOP();HAL_Delay(500);
 //	  Run(BACKWARD_DIR, step_s_2_Speed(4000));HAL_Delay(500);SOFT_STOP();HAL_Delay(500);
-
-	 GET_STATUS();
+	 // HAL_Delay(500);
+//	 while(sp<6000){
+//	  GET_STATUS();sp++;}
+//	 sp=0;
 	 read2=Read_total_steps();
 	 	 //read2=Get_param(L6470_ABS_POS);
 //	 	 if(read2>255){read++;read2=0;RESET_POS();}
@@ -291,6 +338,51 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 72-1;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 1000-1;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -370,7 +462,8 @@ void recieve_on_rs485(uint8_t buffer[],size_t buffer_length)
 	HAL_GPIO_WritePin(MAX_DE_GPIO_Port, MAX_DE_Pin, 0);
 	HAL_GPIO_WritePin(MAX_RE_GPIO_Port, MAX_RE_Pin, 0);
 	//while(1);
-	HAL_UART_Receive_IT(&huart1, buffer, buffer_length);
+
+	uart_state=HAL_UART_Receive_IT(&huart1, buffer, buffer_length);
 //	RS_485_Data_validate = CRC_CHECK_decode(buffer,  POLYNOMIAL, buffer_length ); //returns 0 if valid ,1 if invalid.
 //	CRC_CHECK_decode(buffer,  POLYNOMIAL, buffer_length );
 //	while(1){
@@ -383,7 +476,7 @@ void send_on_rs485(uint8_t* buffer)
 
 	HAL_GPIO_WritePin(MAX_DE_GPIO_Port, MAX_DE_Pin, 1);
 	HAL_GPIO_WritePin(MAX_RE_GPIO_Port, MAX_RE_Pin, 1);
-	message_packet_with_crc(buffer,  POLYNOMIAL,(strlen(buffer)-1) );
+	message_packet_with_crc(buffer,  POLYNOMIAL,BUFFER_LENGTH-1 );
 	strcpy( Previous_buffer,buffer);
 	//buffer[2]=0x0d;
 //	if(buffer[0] == 0x55)
@@ -395,7 +488,8 @@ void send_on_rs485(uint8_t* buffer)
 //		HAL_UART_Transmit(&huart1, Previous_buffer,strlen(Previous_buffer),100);
 //
 //	}
-	HAL_UART_Transmit(&huart1, buffer,strlen(buffer),100);
+	len=strlen(buffer);
+	HAL_UART_Transmit(&huart1, buffer,BUFFER_LENGTH,100);
 //	HAL_UART_Transmit(&huart1, "driver2\r\n", 9,100);
 	recieve_on_rs485(recieve_buffer,BUFFER_LENGTH);
 
@@ -455,6 +549,7 @@ crc_t CRC_CHECK_decode(crc_t* message, crc_t polynomial, int nBytes )
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+
 	if(counter>1){}
 	RS_485_Data_validate = CRC_CHECK_decode(recieve_buffer,  POLYNOMIAL, BUFFER_LENGTH); //returns 0 if valid ,1 if invalid.
 
@@ -495,6 +590,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	counter++;
 
 }
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	read2=Read_total_steps();
+}
+
+
 
 /* USER CODE END 4 */
 
