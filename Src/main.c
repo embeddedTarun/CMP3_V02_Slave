@@ -86,7 +86,8 @@ unsigned long read=0,read2=0;
 //uint8_t buffer[14];
 //char buffer1[9]="hello01\r\n";
 //uint8_t* send_buffer="h-l6470\r\n";
-uint8_t send_buffer[11] = {0x55,'-','l','6','4','7','0','\r','\n',0x00,0x00};
+//uint8_t send_buffer[11] = {0x55,'-','l','6','4','7','0','\r','\n',0x00,0x00};
+uint8_t send_buffer[11] = {0x55,0x02,0x01,0x01,0xf4,0x00,'0','\r','\n',0x00,0x55};
 uint8_t Previous_buffer[11];
 uint8_t RECIEVE_VALID_DATA[11];
 uint8_t recieve_buffer[11];
@@ -103,6 +104,7 @@ uint16_t sp=0;
 uint8_t sp1=0;
 uint8_t sp2=0;
 uint16_t x=0x1234;
+int step=0;
 /* USER CODE END 0 */
 
 /**
@@ -118,8 +120,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-
-	HAL_Init();
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -209,6 +210,7 @@ HAL_Delay(1000);
 //		  sp=sp<<8;
 //		  sp|=RECIEVE_VALID_DATA[5];
 		Run(FORWARD_DIR, step_s_2_Speed(sp));
+		step+=256;
 	  }
 	  else if(RECIEVE_VALID_DATA[1]== 'R')
 	  {
@@ -216,6 +218,7 @@ HAL_Delay(1000);
 //		  sp=sp<<8;
 //		  sp|=RECIEVE_VALID_DATA[5];
 		  Run(BACKWARD_DIR, step_s_2_Speed(sp));
+		  step-=256;
 	  }
 
 	  else if(RECIEVE_VALID_DATA[1]== 'S')
@@ -226,11 +229,13 @@ HAL_Delay(1000);
 //	 		  sp|=RECIEVE_VALID_DATA[3];
 //	 		  Run(BACKWARD_DIR, step_s_2_Speed(sp));
 	 	  }
+	  	  	  while(state_of_rs485!=1);
 	  	  	  send_buffer[1]=0x01;
-			  send_buffer[2]=0x00;
-			  send_buffer[3]=0x01;
-			  send_buffer[4]=0xf4;
-			  send_buffer[5]=0x00;
+	  	  	  send_buffer[2]=step>>24;
+			  send_buffer[3]=(step>>16)&0xff;
+			  send_buffer[4]=(step>>8)&0xff;
+			  send_buffer[5]=(step)&0xff;
+
 
 //	  while(state_of_rs485!=1);
 //	  if(state_of_rs485==1){send_on_rs485(send_buffer);}
@@ -358,7 +363,7 @@ static void MX_TIM4_Init(void)
   htim4.Instance = TIM4;
   htim4.Init.Prescaler = 72-1;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 1000-1;
+  htim4.Init.Period = 65535;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
