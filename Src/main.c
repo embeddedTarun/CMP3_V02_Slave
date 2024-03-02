@@ -17,6 +17,7 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
+
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -35,9 +36,13 @@ typedef uint8_t crc_t;
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+
 #define WIDTH  (8 * sizeof(crc_t))
 #define TOPBIT (1 << (WIDTH - 1))
 
+
+#define MOTOR_DIR 		((MOTOR_STATUS_RAW_DATA&(1<<4))>>4)
+#define MOTOR_STATUS 	((MOTOR_STATUS_RAW_DATA&(3<<5))>>5)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -81,19 +86,21 @@ crc_t CRC_CHECK_decode(crc_t* message, crc_t polynomial, int nBytes );
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+uint32_t MOTOR_STATUS_RAW_DATA=0;
+
 unsigned long read=0,read2=0;
 //uint8_t rc_data[1]={0};
 //uint8_t buffer[14];
 //char buffer1[9]="hello01\r\n";
 //uint8_t* send_buffer="h-l6470\r\n";
 //uint8_t send_buffer[11] = {0x55,'-','l','6','4','7','0','\r','\n',0x00,0x00};
-uint8_t send_buffer[11] = {0x55,0x02,0x01,0x01,0xf4,0x00,'0','\r','\n',0x00,0x55};
-uint8_t Previous_buffer[11];
-uint8_t RECIEVE_VALID_DATA[11];
-uint8_t recieve_buffer[11];
+uint8_t send_buffer[20] = {0x55,0x02,0x01,0x01,0xf4,0x00,'0','\r','\n',0x00,0x55};
+uint8_t Previous_buffer[20];
+uint8_t RECIEVE_VALID_DATA[20];
+uint8_t recieve_buffer[20];
 
 uint8_t RS_485_Data_validate=0;
-int BUFFER_LENGTH=11;
+int BUFFER_LENGTH=20;
 uint8_t state_of_rs485=1;
 uint8_t counter=0;
 HAL_StatusTypeDef uart_state;
@@ -103,8 +110,13 @@ uint16_t SPEED=0;
 uint16_t sp=0;
 uint8_t sp1=0;
 uint8_t sp2=0;
-uint16_t x=0x1234;
+uint16_t x=0;
+uint32_t y=0,z=0,s=0;
+
 int step=0;
+ long TOTAL_MICROSTEP=0;
+ extern long CURRENT_POSITION;
+ uint8_t dir=3;
 /* USER CODE END 0 */
 
 /**
@@ -139,21 +151,22 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-
+#define self_test 1
+#define LIMIT 6000
   //send_on_rs485(send_buffer);
   recieve_on_rs485(recieve_buffer,BUFFER_LENGTH);
 
   Spi_init();
 //HAL_TIM_Base_Start_IT(&htim4);
-HAL_Delay(1000);
+  HAL_Delay(1000);
 
 
 
   	HARD_HIZ();
     GET_STATUS();
 
-	Set_param(L6470_ACC, 		0x0482, L6470_ACC_LEN);//ffa
-	Set_param(L6470_DEC, 		0x0482, L6470_DEC_LEN);
+	Set_param(L6470_ACC, 		0x000e, L6470_ACC_LEN);//ffa
+	Set_param(L6470_DEC, 		0x000e, L6470_DEC_LEN);
 	Set_param(L6470_MAX_SPEED, 	0x015e, L6470_MAX_SPEED_LEN);//3ff
 	Set_param(L6470_MIN_SPEED, 	0x00, L6470_MIN_SPEED_LEN);
 	Set_param(L6470_FS_SPD, 	0x3ff, L6470_FS_SPD_LEN);
@@ -172,12 +185,13 @@ HAL_Delay(1000);
 	Set_param(L6470_CONFIG_A, 	0x2E88, L6470_CONFIG_A_LEN);
 	RESET_POS();
 	//GO_UNTIL(ACT0, FORWARD_DIR,step_s_2_Speed(8000) );//15 min //1550 max
-	//Move(FORWARD_DIR,200*128);
+//	Move(FORWARD_DIR,200*128);
 //	HAL_Delay(4000);
 //
 //	GO_TO(0xfffff);
-
-	//Run(FORWARD_DIR, step_s_2_Speed(4000));
+#if self_test
+	Run(FORWARD_DIR, step_s_2_Speed(1550));
+#endif
 	//HAL_Delay(4000);
 	//Set_param(SOFT_STOP_CMD,0, 8);
 
@@ -197,15 +211,34 @@ HAL_Delay(1000);
 
 
 	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-	   DAMPING = RECIEVE_VALID_DATA[3];
+
+#if !self_test
+	  DAMPING = RECIEVE_VALID_DATA[3];
 	   SPEED = RECIEVE_VALID_DATA[2];
 //	   sp1 = RECIEVE_VALID_DATA[4];
 //	  		  sp2=RECIEVE_VALID_DATA[5];
 //	  		  sp=(sp1<<8)|sp2;
 	  		  sp=((RECIEVE_VALID_DATA[4]<<8)|RECIEVE_VALID_DATA[5]);
 //	  HAL_Delay(20);
+//
+	  		if(RECIEVE_VALID_DATA[7]== 'L')
+	  		{
+
+				CURRENT_POSITION =  RECIEVE_VALID_DATA[8] << 56;
+				CURRENT_POSITION |= RECIEVE_VALID_DATA[9] << 48;
+				CURRENT_POSITION |= RECIEVE_VALID_DATA[10] << 40;
+				CURRENT_POSITION |= RECIEVE_VALID_DATA[11] << 32;
+				CURRENT_POSITION |= RECIEVE_VALID_DATA[12] << 24;
+				CURRENT_POSITION |= RECIEVE_VALID_DATA[13] << 16;
+				CURRENT_POSITION |= RECIEVE_VALID_DATA[14] << 8;
+				CURRENT_POSITION |= RECIEVE_VALID_DATA[15];
+
+	  		}
+
+
 	  if(RECIEVE_VALID_DATA[1]== 'F')
 	  {
+		 // dir=1;
 //		   sp = RECIEVE_VALID_DATA[4];
 //		  sp=sp<<8;
 //		  sp|=RECIEVE_VALID_DATA[5];
@@ -214,6 +247,7 @@ HAL_Delay(1000);
 	  }
 	  else if(RECIEVE_VALID_DATA[1]== 'R')
 	  {
+		//  dir=2;
 //		   sp = RECIEVE_VALID_DATA[4];
 //		  sp=sp<<8;
 //		  sp|=RECIEVE_VALID_DATA[5];
@@ -223,6 +257,8 @@ HAL_Delay(1000);
 
 	  else if(RECIEVE_VALID_DATA[1]== 'S')
 	 	  {
+		 // dir=3;
+		 // RESET_POS();
 		  	  SOFT_STOP();
 //	 		  uint16_t sp = RECIEVE_VALID_DATA[2];
 //	 		  sp=sp<<8;
@@ -231,10 +267,17 @@ HAL_Delay(1000);
 	 	  }
 	  	  	  while(state_of_rs485!=1);
 	  	  	  send_buffer[1]=0x01;
-	  	  	  send_buffer[2]=step>>24;
-			  send_buffer[3]=(step>>16)&0xff;
-			  send_buffer[4]=(step>>8)&0xff;
-			  send_buffer[5]=(step)&0xff;
+	  	  	  send_buffer[2]=(TOTAL_MICROSTEP>>56)&0xff;
+			  send_buffer[3]=(TOTAL_MICROSTEP>>48)&0xff;
+			  send_buffer[4]=(TOTAL_MICROSTEP>>40)&0xff;
+			  send_buffer[5]=(TOTAL_MICROSTEP>>32)&0xff;
+			  send_buffer[6]=(TOTAL_MICROSTEP>>24)&0xff;
+			  send_buffer[7]=(TOTAL_MICROSTEP>>16)&0xff;
+			  send_buffer[8]=(TOTAL_MICROSTEP>>8)&0xff;
+			  send_buffer[9]=(TOTAL_MICROSTEP)&0xff;
+
+#endif
+
 
 
 //	  while(state_of_rs485!=1);
@@ -253,7 +296,47 @@ HAL_Delay(1000);
 //	 while(sp<6000){
 //	  GET_STATUS();sp++;}
 //	 sp=0;
-	 read2=Read_total_steps();
+	 MOTOR_STATUS_RAW_DATA = GET_STATUS();
+	 y=Speed_2_step_s(GET_SPEED());
+	 z=ACC_DEC_2_step_s(GET_DEC());
+//	 x=MOTOR_STATUS;
+	 //x=MOTOR_STATUS&(1<<4);
+//	 if(MOTOR_DIR==FORWARD_DIR){dir=FORWARD_DIR;}
+//	 else if(MOTOR_DIR==BACKWARD_DIR){dir=BACKWARD_DIR;}
+	 x=MOTOR_STATUS;
+//	 y=MOTOR_DIR;
+	// if(MOTOR_DIR!=x){dir=3;RESET_POS();}
+	 TOTAL_MICROSTEP = Read_total_steps(MOTOR_DIR,MOTOR_STATUS);
+#if self_test
+	// if(y>15){
+		s= ( ( (y*y) ) / (2*z) )/2;
+		// }
+
+	if((TOTAL_MICROSTEP+s)>LIMIT)
+	{
+		SOFT_STOP();
+		if(TOTAL_MICROSTEP<LIMIT){
+		Run(FORWARD_DIR, step_s_2_Speed(20));}
+
+	}
+//	if((TOTAL_MICROSTEP)<6000)
+//	{
+//
+//		Run(FORWARD_DIR, step_s_2_Speed(1550));
+//	}
+#endif
+//
+	// x=MOTOR_DIR;
+//	 if((MOTOR_STATUS&(1<<4)==1) && (MOTOR_STATUS&(!(3<<4))==0) )
+//	 {
+//		 current_steps=TOTAL_MICROSTEP;
+//		 TOTAL_MICROSTEP=0;
+//		 total_revolutions=0;
+//		 RESET_POS();
+//		 current_pos=
+//
+//	 }
+//	 else{}
 	 	 //read2=Get_param(L6470_ABS_POS);
 //	 	 if(read2>255){read++;read2=0;RESET_POS();}
 	 	//read=Get_param(L6470_ACC);
@@ -327,7 +410,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -482,7 +565,7 @@ void send_on_rs485(uint8_t* buffer)
 	HAL_GPIO_WritePin(MAX_DE_GPIO_Port, MAX_DE_Pin, 1);
 	HAL_GPIO_WritePin(MAX_RE_GPIO_Port, MAX_RE_Pin, 1);
 	message_packet_with_crc(buffer,  POLYNOMIAL,BUFFER_LENGTH-1 );
-	strcpy( Previous_buffer,buffer);
+	memcpy( Previous_buffer,buffer,BUFFER_LENGTH);
 	//buffer[2]=0x0d;
 //	if(buffer[0] == 0x55)
 //	{
@@ -493,7 +576,7 @@ void send_on_rs485(uint8_t* buffer)
 //		HAL_UART_Transmit(&huart1, Previous_buffer,strlen(Previous_buffer),100);
 //
 //	}
-	len=strlen(buffer);
+	//len=strlen(buffer);
 	HAL_UART_Transmit(&huart1, buffer,BUFFER_LENGTH,100);
 //	HAL_UART_Transmit(&huart1, "driver2\r\n", 9,100);
 	recieve_on_rs485(recieve_buffer,BUFFER_LENGTH);
@@ -562,7 +645,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	{
 		if(recieve_buffer[0]== 0x55)// if acknowledgment is valid
 		{
-			strcpy( RECIEVE_VALID_DATA,recieve_buffer);//store data into actual data buffer
+			memcpy( RECIEVE_VALID_DATA,recieve_buffer,BUFFER_LENGTH);//store data into actual data buffer
 			send_buffer[0]=0x55;//0x55 is acknowledgment for a valid data
 			send_on_rs485(send_buffer);
 			state_of_rs485=1;
@@ -598,7 +681,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	read2=Read_total_steps();
+	//read2=Read_total_steps();
 }
 
 

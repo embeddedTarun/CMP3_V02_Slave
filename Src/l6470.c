@@ -12,6 +12,9 @@
 
  uint32_t total_revolutions=0;
  uint32_t total_steps=0;
+ _Bool previous_dir=1;
+ uint8_t previous_status=0;
+ long CURRENT_POSITION=0,PREVIOUS_POSITION=0,Steps_moved=0;
 
 void Spi_init()
 {
@@ -270,15 +273,53 @@ uint32_t Get_param(uint8_t parameter)
 
 }
 
+/*this function converts step per second value into speed register value.*/
 uint32_t step_s_2_Speed(uint32_t step_s)
 {
 
 	if(step_s<=STEP_S_MAX)
 	{
-		step_s = (uint32_t)(((float)step_s)/0.015);
+		step_s = (uint32_t)(((float)step_s)/0.0149);
+	}
+	else {step_s=15;}
+	return step_s;
+
+}
+/*this function converts  speed register value into step per second.*/
+uint32_t Speed_2_step_s(uint32_t speed_reg)
+{
+
+	if(speed_reg<=SPEED_MAX)
+	{
+		speed_reg = (uint32_t)round((((float)speed_reg)*(0.0149)));
+	}
+	else {speed_reg=1000;}
+	return speed_reg;
+
+}
+/*this function converts step per second square value into acceleration/deceleration register value.*/
+uint32_t step_s_2_ACC_DEC(uint32_t step_s)
+{
+
+	if(step_s<=ACC_DEC_STEP_S_MAX)
+	{
+		step_s = (uint32_t)(((float)step_s)/14.55);
 	}
 	else {step_s=0;}
 	return step_s;
+
+}
+
+/*this function converts acceleration/deceleration register value into step per second square value .*/
+uint32_t ACC_DEC_2_step_s(uint32_t acc_dec_reg)
+{
+
+	if(acc_dec_reg<=ACC_DEC_MAX)
+	{
+		acc_dec_reg = (uint32_t)(((float)acc_dec_reg)*(14.55));
+	}
+	else {acc_dec_reg=0;}
+	return acc_dec_reg;
 
 }
 
@@ -391,32 +432,125 @@ void HARD_HIZ(void)
 
 uint32_t GET_STATUS(void)
 {
-	Spi_transmit(Get_STATUS_CMD);
-
-	uint8_t rc_data[1]={0};
-	uint32_t get_data=0;
-	Spi_recieve(rc_data,1);get_data=rc_data[0];rc_data[0]=0;//	memset(rc_data, '\0', sizeof(rc_data));
-	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0];rc_data[0]=0;// memset(rc_data, '\0', sizeof(rc_data));
-
-	return get_data;
+	return Get_param(L6470_STATUS_A);
+//	Spi_transmit(Get_STATUS_CMD);
+//
+//	uint8_t rc_data[1]={0};
+//	uint32_t get_data=0;
+//	Spi_recieve(rc_data,1);get_data=rc_data[0];rc_data[0]=0;//	memset(rc_data, '\0', sizeof(rc_data));
+//	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0];rc_data[0]=0;// memset(rc_data, '\0', sizeof(rc_data));
+//
+//	return get_data;
 
 }
 
-
-
-
-unsigned long Read_total_steps()
+uint32_t GET_SPEED(void)
 {
-	total_steps = Get_param(L6470_ABS_POS);
+	return Get_param(L6470_SPEED);
 
-   // total_steps++;
-    if (total_steps >= MAX_STEPS) {
-    	uint32_t x=Get_param(L6470_ABS_POS);
-    	RESET_POS();
-    	total_steps=x;
-        total_steps -= x;
-        total_revolutions++;
-    }
-   return (total_revolutions* MAX_STEPS + total_steps);
+}
+
+uint32_t GET_DEC(void)
+{
+	return Get_param(L6470_DEC);
+
+}
+ long Read_total_steps(_Bool direction,uint8_t status)
+{
+	if((previous_dir!=direction) || ((previous_status!=status)&& (status==0)))
+	{
+
+		Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+		PREVIOUS_POSITION = CURRENT_POSITION;
+//		CURRENT_POSITION += ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
+//		if(direction==FORWARD_DIR){CURRENT_POSITION=CURRENT_POSITION+Steps_moved;}
+//		else if(direction==BACKWARD_DIR) {CURRENT_POSITION=CURRENT_POSITION-Steps_moved;}
+//		CURRENT_POSITION=CURRENT_POSITION+Steps_moved;
+		previous_status=status;
+		total_revolutions=0;total_steps=0;RESET_POS();}
+	if(status!=0){
+	previous_dir=direction;
+	previous_status=status;
+	if(direction==BACKWARD_DIR)
+	{
+		total_steps =(MAX_STEPS) - ((Get_param(L6470_ABS_POS)-128) % ((1 << 22)-128));
+		Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+//		CURRENT_POSITION -= ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
+		CURRENT_POSITION=PREVIOUS_POSITION-Steps_moved;
+	}
+	//total_steps = Get_param(L6470_ABS_POS);
+	else if(direction==FORWARD_DIR)
+	{
+
+		total_steps = Get_param(L6470_ABS_POS)%(1<<22);
+		Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+//		CURRENT_POSITION += ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
+		CURRENT_POSITION=PREVIOUS_POSITION+Steps_moved;
+	}
+
+	if (total_steps > (MAX_STEPS-128)) {
+	    	uint32_t Reminder_step = Get_param(L6470_ABS_POS);
+	    	RESET_POS();
+	    	total_steps=Reminder_step;
+	        total_steps -= Reminder_step;
+	        total_revolutions++;
+	    }
+//	   return ((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+	}
+	return CURRENT_POSITION;
+	//return ((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+//	else if(status==0)
+//		{
+//		total_revolutions=0;
+//
+//		}
+    //total_steps++;
+//    if (total_steps > (MAX_STEPS-128)) {
+//    	uint32_t Reminder_step = Get_param(L6470_ABS_POS);
+//    	RESET_POS();
+//    	total_steps=Reminder_step;
+//        total_steps -= Reminder_step;
+//        total_revolutions++;
+//    }
+//   return ((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+
+
+//	total_steps = Get_param(L6470_ABS_POS);
+//
+////   if(dir==0)
+////   {
+////	   if (total_steps <= 1) {
+////	         	uint32_t Reminder_step = Get_param(L6470_ABS_POS);
+////	         	RESET_POS();
+////	         	total_steps=Reminder_step;
+////	             total_steps += Reminder_step;
+////	             total_revolutions--;
+////	         }
+////	        return ((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+////
+////   }
+////
+////   else if(dir==1){
+////
+////   if (total_steps > MAX_STEPS) {
+////       	uint32_t Reminder_step = Get_param(L6470_ABS_POS);
+////       	RESET_POS();
+////       	total_steps=Reminder_step;
+////           total_steps -= Reminder_step;
+////           total_revolutions++;
+////       }
+////      return ((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+////   }
+//
+//	if (total_steps >= MAX_STEPS || total_steps < 0) {
+//	    uint32_t current_position = Get_param(L6470_ABS_POS);
+//	    RESET_POS();
+//	    total_steps = current_position;
+//	    //total_steps -= current_position;
+//	    total_revolutions++;
+//	}
+//
+//	return ((total_revolutions * MAX_STEPS - total_steps) / MICROSTEPS_PER_STEP);
+
 }
 

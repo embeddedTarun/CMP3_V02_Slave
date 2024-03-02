@@ -14,14 +14,29 @@
 extern SPI_HandleTypeDef hspi1;
 
 
-#define MAX_STEPS 4194175 //4194303
-#define MICROSTEPS_PER_STEP 128
+#define MAX_STEPS 4194175//4194175 //4194303
+#define MICROSTEPS_PER_STEP (128*2)
 //extern uint32_t total_revolutions;
 //extern uint32_t total_steps;
-
+extern uint8_t dir;
 
 //#define SPI1_SS_Pin GPIO_PIN_2
 //#define SPI1_SS_GPIO_Port GPIOA
+
+
+//#define MOTOR_DIR 		((GET_STATUS()&(1<<4))>>4)
+//#define MOTOR_STATUS 	((GET_STATUS()&(3<<5))>>5)
+
+
+
+
+
+
+
+
+
+
+
 
 #define SetParam_CMD		(0x00)
 #define GetParam_CMD        (0x20)
@@ -71,8 +86,10 @@ extern SPI_HandleTypeDef hspi1;
 
 
 
-#define STEP_S_MAX 		(15610)
-#define SPEED_MAX 			(0xFE11A)  // (1040666)in step/s
+#define STEP_S_MAX 			(15610)   	// steps/second
+#define SPEED_MAX 			(0xFE11A)  	// (1040666)in SPEED register value
+#define ACC_DEC_STEP_S_MAX 	(59590)		// steps/(second^2)
+#define ACC_DEC_MAX 		(0xfff)		//(4095) in ACC/DEC register value
 
 typedef enum resister_length
 {
@@ -131,6 +148,12 @@ void Spi_init();
 
  uint32_t step_s_2_Speed(uint32_t step_s);
 
+ uint32_t Speed_2_step_s(uint32_t speed_reg);
+
+ uint32_t step_s_2_ACC_DEC(uint32_t step_s);
+
+ uint32_t ACC_DEC_2_step_s(uint32_t acc_dec_reg);
+
  void Run(motor_direction_t dir, uint32_t speed);
 
  void Move(motor_direction_t dir,uint32_t N_step);
@@ -160,7 +183,10 @@ void Spi_init();
 
  uint32_t GET_STATUS(void);
 
- unsigned long Read_total_steps();
+ uint32_t GET_SPEED(void);
+ uint32_t GET_DEC(void);
+
+ long Read_total_steps(_Bool direction,uint8_t status);
 
 
 
