@@ -432,15 +432,15 @@ void HARD_HIZ(void)
 
 uint32_t GET_STATUS(void)
 {
-	return Get_param(L6470_STATUS_A);
-//	Spi_transmit(Get_STATUS_CMD);
-//
-//	uint8_t rc_data[1]={0};
-//	uint32_t get_data=0;
-//	Spi_recieve(rc_data,1);get_data=rc_data[0];rc_data[0]=0;//	memset(rc_data, '\0', sizeof(rc_data));
-//	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0];rc_data[0]=0;// memset(rc_data, '\0', sizeof(rc_data));
-//
-//	return get_data;
+//	return Get_param(L6470_STATUS_A);
+	Spi_transmit(Get_STATUS_CMD);
+
+	uint8_t rc_data[1]={0};
+	uint32_t get_data=0;
+	Spi_recieve(rc_data,1);get_data=rc_data[0];rc_data[0]=0;//	memset(rc_data, '\0', sizeof(rc_data));
+	Spi_recieve(rc_data,1);get_data =(get_data<<8)|rc_data[0];rc_data[0]=0;// memset(rc_data, '\0', sizeof(rc_data));
+
+	return get_data;
 
 }
 
@@ -457,6 +457,7 @@ uint32_t GET_DEC(void)
 }
  long Read_total_steps(_Bool direction,uint8_t status)
 {
+
 	if((previous_dir!=direction) || ((previous_status!=status)&& (status==0)))
 	{
 
@@ -473,7 +474,9 @@ uint32_t GET_DEC(void)
 	previous_status=status;
 	if(direction==BACKWARD_DIR)
 	{
-		total_steps =(MAX_STEPS) - ((Get_param(L6470_ABS_POS)-128) % ((1 << 22)-128));
+		uint32_t pos=Get_param(L6470_ABS_POS);
+		if(pos==0){pos=4194303;}
+		total_steps =(MAX_STEPS) - ((pos-128) % ((1 << 22)-128));
 		Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
 //		CURRENT_POSITION -= ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
 		CURRENT_POSITION=PREVIOUS_POSITION-Steps_moved;

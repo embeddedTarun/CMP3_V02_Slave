@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "string.h"
+#include "math.h"
 #include "l6470.h"
 /* USER CODE END Includes */
 
@@ -36,13 +37,14 @@ typedef uint8_t crc_t;
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-
+#define BUFFER_LENGTH 30
 #define WIDTH  (8 * sizeof(crc_t))
 #define TOPBIT (1 << (WIDTH - 1))
 
 
 #define MOTOR_DIR 		((MOTOR_STATUS_RAW_DATA&(1<<4))>>4)
 #define MOTOR_STATUS 	((MOTOR_STATUS_RAW_DATA&(3<<5))>>5)
+#define MOTOR_BUSY_FLAG 	((MOTOR_STATUS_RAW_DATA&(1<<1))>>1)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -81,42 +83,61 @@ uint8_t* message_packet_with_crc(crc_t* message2, crc_t polynomial, int nBytes )
 
 crc_t CRC_CHECK_decode(crc_t* message, crc_t polynomial, int nBytes );
 
+void UNL_freeride();
+
+void MAN_freeride();
+
+void MAN_Videoloop();
+
+void UNL_Animation();
+
+void MAN_Animation();
+
+void Limit_setting();
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
 uint32_t MOTOR_STATUS_RAW_DATA=0;
-
+long int ps=0;
 unsigned long read=0,read2=0;
 //uint8_t rc_data[1]={0};
 //uint8_t buffer[14];
 //char buffer1[9]="hello01\r\n";
 //uint8_t* send_buffer="h-l6470\r\n";
 //uint8_t send_buffer[11] = {0x55,'-','l','6','4','7','0','\r','\n',0x00,0x00};
-uint8_t send_buffer[20] = {0x55,0x02,0x01,0x01,0xf4,0x00,'0','\r','\n',0x00,0x55};
-uint8_t Previous_buffer[20];
-uint8_t RECIEVE_VALID_DATA[20];
-uint8_t recieve_buffer[20];
+uint8_t send_buffer[BUFFER_LENGTH] = {0x55,0x02,0x01,0x01,0xf4,0x00,'0','\r','\n',0x00,0x55};
+uint8_t Previous_buffer[BUFFER_LENGTH];
+uint8_t RECIEVE_VALID_DATA[BUFFER_LENGTH];
+uint8_t recieve_buffer[BUFFER_LENGTH];
 
 uint8_t RS_485_Data_validate=0;
-int BUFFER_LENGTH=20;
+//int BUFFER_LENGTH=20;
 uint8_t state_of_rs485=1;
 uint8_t counter=0;
 HAL_StatusTypeDef uart_state;
 int len=0;
-uint16_t DAMPING =0;
+uint8_t DAMPING =145,PREVIOUS_DAMPING=145;
 uint16_t SPEED=0;
 uint16_t sp=0;
 uint8_t sp1=0;
 uint8_t sp2=0;
 uint16_t x=0;
-uint32_t y=0,z=0,s=0;
-
+uint32_t y=0,z=0;
+int32_t s=0;
+uint8_t count = 0;
 int step=0;
  long TOTAL_MICROSTEP=0;
  extern long CURRENT_POSITION;
+ long LIMIT_M = 0x7FFFFFFF,check=0;
+ uint32_t id=0;
  uint8_t dir=3;
+ _Bool toggle=0;
+ _Bool busy_flag=0;
+ _Bool movement_is_pending=0;
+
 /* USER CODE END 0 */
 
 /**
@@ -151,7 +172,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-#define self_test 1
+#define self_test 0
 #define LIMIT 6000
   //send_on_rs485(send_buffer);
   recieve_on_rs485(recieve_buffer,BUFFER_LENGTH);
@@ -159,14 +180,14 @@ int main(void)
   Spi_init();
 //HAL_TIM_Base_Start_IT(&htim4);
   HAL_Delay(1000);
-
+ // id=  DBGMCU->IDCODE;
 
 
   	HARD_HIZ();
     GET_STATUS();
 
-	Set_param(L6470_ACC, 		0x000e, L6470_ACC_LEN);//ffa
-	Set_param(L6470_DEC, 		0x000e, L6470_DEC_LEN);
+	Set_param(L6470_ACC, 		DAMPING, L6470_ACC_LEN); // min damping 0x91 //max damping 0x0a //ffa
+	Set_param(L6470_DEC, 		DAMPING, L6470_DEC_LEN);
 	Set_param(L6470_MAX_SPEED, 	0x015e, L6470_MAX_SPEED_LEN);//3ff
 	Set_param(L6470_MIN_SPEED, 	0x00, L6470_MIN_SPEED_LEN);
 	Set_param(L6470_FS_SPD, 	0x3ff, L6470_FS_SPD_LEN);
@@ -184,13 +205,20 @@ int main(void)
 	Set_param(L6470_ALARM_EN, 	0xFF, L6470_ALARM_EN_LEN);
 	Set_param(L6470_CONFIG_A, 	0x2E88, L6470_CONFIG_A_LEN);
 	RESET_POS();
+
 	//GO_UNTIL(ACT0, FORWARD_DIR,step_s_2_Speed(8000) );//15 min //1550 max
 //	Move(FORWARD_DIR,200*128);
 //	HAL_Delay(4000);
 //
 //	GO_TO(0xfffff);
 #if self_test
+	Set_param(L6470_MAX_SPEED, 	0x66, L6470_MAX_SPEED_LEN);// 1550 steps/sec or 0x65
+	Set_param(L6470_MIN_SPEED, 	0x3f, L6470_MIN_SPEED_LEN);//15 steps/sec or 0x3f
+
 	Run(FORWARD_DIR, step_s_2_Speed(1550));
+//	GO_TO(4100000);
+	//GO_TO_DIR(0, 3194000);
+//	Move(FORWARD_DIR,4194303);//
 #endif
 	//HAL_Delay(4000);
 	//Set_param(SOFT_STOP_CMD,0, 8);
@@ -208,63 +236,186 @@ int main(void)
   while (1)
   {
 
-
-
 	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
+
 #if !self_test
+	  switch (RECIEVE_VALID_DATA[6])
+	  	  {
+	  		  case 'U': /*unlimited mode*/
+	  			  switch (RECIEVE_VALID_DATA[7])
+	  			  {
+	  			  case 'C': // calibration mode
+
+
+	  				  break;
+	  			  case 'F':  // freeride
+	  				  UNL_freeride();
+	  				  break;
+	  			  case 'A':   //animation
+	  				 UNL_Animation();
+	  				  break;
+	  			  case 'T':  // timelapse
+
+	  				  break;
+	  			  case 'R':  // recording
+
+	  				  break;
+
+	  			  case 'P':  // playback
+
+	  				  break;
+
+	  			  case 'V':  // videoloop
+
+	  				  break;
+	  			  case 'G':  // general
+	  				  SOFT_STOP();
+	  				  LIMIT_M=0x7FFFFFFF;
+
+	  				  break;
+	  			  case 'L':  // limit setting
+
+	  				  LIMIT_M=0x7FFFFFFF;
+	  				  break;
+
+	  			  }
+	  			  break;
+	  		  case 'M': /*Manual mode*/
+	  			  switch (RECIEVE_VALID_DATA[7])
+	  			  {
+	  			  case 'C': // calibration mode
+	  				  UNL_freeride();
+	  				  break;
+	  			  case 'F':  // freeride
+	  				  MAN_freeride();
+	  				  break;
+	  			  case 'A':   //animation
+	  				 MAN_Animation();
+	  				  break;
+	  			  case 'T':  // timelapse
+
+	  				  break;
+	  			  case 'R':  // recording
+
+	  				  break;
+
+	  			  case 'P':  // playback
+
+	  				  break;
+
+	  			  case 'V':  // videoloop
+
+	  				 MAN_Videoloop();
+
+	  				  break;
+	  			  case 'G':  // general
+	  				SOFT_STOP();
+
+	  				  break;
+	  			  case 'L':  // limit setting
+	  				  Limit_setting();
+	  				  break;
+
+	  			  }
+	  		  	  break;
+	  		  default :
+	  		  	  break;
+
+	  	  }
+
+
+
+
+
+
+
+
 	  DAMPING = RECIEVE_VALID_DATA[3];
-	   SPEED = RECIEVE_VALID_DATA[2];
+//	  Set_param(L6470_ACC, 		DAMPING, L6470_ACC_LEN); // min damping 0x91 //max damping 0x0a //ffa
+//	  Set_param(L6470_DEC, 		DAMPING, L6470_DEC_LEN);
+	  if(DAMPING != PREVIOUS_DAMPING)
+	  {
+//		  SOFT_STOP();
+//		  HAL_Delay(100);
+		 if(MOTOR_STATUS==0){
+		  Set_param(L6470_ACC, 		DAMPING, L6470_ACC_LEN); // min damping 0x91 //max damping 0x0a //ffa
+		  Set_param(L6470_DEC, 		DAMPING, L6470_DEC_LEN);
+		  PREVIOUS_DAMPING = DAMPING;
+		 }
+	  }
+
+	  SPEED = RECIEVE_VALID_DATA[2];
+
+
 //	   sp1 = RECIEVE_VALID_DATA[4];
 //	  		  sp2=RECIEVE_VALID_DATA[5];
 //	  		  sp=(sp1<<8)|sp2;
-	  		  sp=((RECIEVE_VALID_DATA[4]<<8)|RECIEVE_VALID_DATA[5]);
+//	  		  sp=((RECIEVE_VALID_DATA[4]<<8)|RECIEVE_VALID_DATA[5]);
 //	  HAL_Delay(20);
 //
-	  		if(RECIEVE_VALID_DATA[7]== 'L')
-	  		{
+//	  		if(RECIEVE_VALID_DATA[7]== 'L')
+//	  		{
+//
+//				CURRENT_POSITION =  RECIEVE_VALID_DATA[8] << 56;
+//				CURRENT_POSITION |= RECIEVE_VALID_DATA[9] << 48;
+//				CURRENT_POSITION |= RECIEVE_VALID_DATA[10] << 40;
+//				CURRENT_POSITION |= RECIEVE_VALID_DATA[11] << 32;
+//				CURRENT_POSITION |= RECIEVE_VALID_DATA[12] << 24;
+//				CURRENT_POSITION |= RECIEVE_VALID_DATA[13] << 16;
+//				CURRENT_POSITION |= RECIEVE_VALID_DATA[14] << 8;
+//				CURRENT_POSITION |= RECIEVE_VALID_DATA[15];
+//
+//				LIMIT_M=CURRENT_POSITION;
+//	  		}
 
-				CURRENT_POSITION =  RECIEVE_VALID_DATA[8] << 56;
-				CURRENT_POSITION |= RECIEVE_VALID_DATA[9] << 48;
-				CURRENT_POSITION |= RECIEVE_VALID_DATA[10] << 40;
-				CURRENT_POSITION |= RECIEVE_VALID_DATA[11] << 32;
-				CURRENT_POSITION |= RECIEVE_VALID_DATA[12] << 24;
-				CURRENT_POSITION |= RECIEVE_VALID_DATA[13] << 16;
-				CURRENT_POSITION |= RECIEVE_VALID_DATA[14] << 8;
-				CURRENT_POSITION |= RECIEVE_VALID_DATA[15];
 
-	  		}
-
-
-	  if(RECIEVE_VALID_DATA[1]== 'F')
-	  {
-		 // dir=1;
-//		   sp = RECIEVE_VALID_DATA[4];
-//		  sp=sp<<8;
-//		  sp|=RECIEVE_VALID_DATA[5];
-		Run(FORWARD_DIR, step_s_2_Speed(sp));
-		step+=256;
-	  }
-	  else if(RECIEVE_VALID_DATA[1]== 'R')
-	  {
-		//  dir=2;
-//		   sp = RECIEVE_VALID_DATA[4];
-//		  sp=sp<<8;
-//		  sp|=RECIEVE_VALID_DATA[5];
-		  Run(BACKWARD_DIR, step_s_2_Speed(sp));
-		  step-=256;
-	  }
-
-	  else if(RECIEVE_VALID_DATA[1]== 'S')
-	 	  {
-		 // dir=3;
-		 // RESET_POS();
-		  	  SOFT_STOP();
-//	 		  uint16_t sp = RECIEVE_VALID_DATA[2];
-//	 		  sp=sp<<8;
-//	 		  sp|=RECIEVE_VALID_DATA[3];
-//	 		  Run(BACKWARD_DIR, step_s_2_Speed(sp));
-	 	  }
+//	  if(RECIEVE_VALID_DATA[1]== 'F')
+//	  {
+//		 // dir=1;
+////		   sp = RECIEVE_VALID_DATA[4];
+////		  sp=sp<<8;
+////		  sp|=RECIEVE_VALID_DATA[5];
+//
+////		  if((TOTAL_MICROSTEP+s)<LIMIT)
+////		  	{
+////		Run(FORWARD_DIR, step_s_2_Speed(sp));
+////		  	}
+//		//  Run(FORWARD_DIR, step_s_2_Speed(15));
+////		  check = TOTAL_MICROSTEP+s;
+//
+//		  if((TOTAL_MICROSTEP+s)<LIMIT_M){
+//		 Run(FORWARD_DIR, step_s_2_Speed(sp));
+//		  }
+//
+//		step+=256;
+//	  }
+//	  else if(RECIEVE_VALID_DATA[1]== 'B')
+//	  {
+//		//  dir=2;
+////		   sp = RECIEVE_VALID_DATA[4];
+////		  sp=sp<<8;
+////		  sp|=RECIEVE_VALID_DATA[5];
+////		  if((TOTAL_MICROSTEP+s)LIMIT)
+////		  	{
+//		 // Run(BACKWARD_DIR, step_s_2_Speed(15));
+//		//  if((TOTAL_MICROSTEP-s)>0){
+//		  Run(BACKWARD_DIR, step_s_2_Speed(sp));
+//		//  }
+////	  }
+//		  step-=256;
+//	  }
+//
+//	  else if(RECIEVE_VALID_DATA[1]== 'S')
+//	 	  {
+//		 // dir=3;
+//		 // RESET_POS();
+//		  	  SOFT_STOP();
+////	 		  uint16_t sp = RECIEVE_VALID_DATA[2];
+////	 		  sp=sp<<8;
+////	 		  sp|=RECIEVE_VALID_DATA[3];
+////	 		  Run(BACKWARD_DIR, step_s_2_Speed(sp));
+//	 	  }
 	  	  	  while(state_of_rs485!=1);
 	  	  	  send_buffer[1]=0x01;
 	  	  	  send_buffer[2]=(TOTAL_MICROSTEP>>56)&0xff;
@@ -275,7 +426,10 @@ int main(void)
 			  send_buffer[7]=(TOTAL_MICROSTEP>>16)&0xff;
 			  send_buffer[8]=(TOTAL_MICROSTEP>>8)&0xff;
 			  send_buffer[9]=(TOTAL_MICROSTEP)&0xff;
-
+			  send_buffer[16]=(y>>8)&0xff;
+			  send_buffer[17]=(y)&0xff;
+			  send_buffer[18]=(z>>8)&0xff;
+			  send_buffer[19]=(z)&0xff;
 #endif
 
 
@@ -299,27 +453,78 @@ int main(void)
 	 MOTOR_STATUS_RAW_DATA = GET_STATUS();
 	 y=Speed_2_step_s(GET_SPEED());
 	 z=ACC_DEC_2_step_s(GET_DEC());
-//	 x=MOTOR_STATUS;
+	 x=MOTOR_STATUS;
 	 //x=MOTOR_STATUS&(1<<4);
 //	 if(MOTOR_DIR==FORWARD_DIR){dir=FORWARD_DIR;}
 //	 else if(MOTOR_DIR==BACKWARD_DIR){dir=BACKWARD_DIR;}
-	 x=MOTOR_STATUS;
+	// x=MOTOR_STATUS;
 //	 y=MOTOR_DIR;
+//	 x=MOTOR_DIR;
 	// if(MOTOR_DIR!=x){dir=3;RESET_POS();}
+//	 if(count>=1){
+//	 		 HARD_STOP();
+//	 	 				 x=MOTOR_DIR;
+//
+//	 	 			 }
+	 ps=Get_param(L6470_ABS_POS);
+	 busy_flag=MOTOR_BUSY_FLAG;
 	 TOTAL_MICROSTEP = Read_total_steps(MOTOR_DIR,MOTOR_STATUS);
-#if self_test
+
+//	 if(TOTAL_MICROSTEP>1000 && busy_flag==1)
+//	 {
+//		 if(x != 0)
+//		 {   SOFT_STOP();
+//			 Run(BACKWARD_DIR, 0);
+//		 }
+//		 else if (x==0 && toggle==0)
+//		 {
+//			 toggle=1;
+//			// RESET_POS();
+////			 GO_TO_DIR(FORWARD_DIR,25600);
+//			 Move(FORWARD_DIR,256000);
+////			 while(1)
+////			 {
+////				 TOTAL_MICROSTEP = Read_total_steps(MOTOR_DIR,MOTOR_STATUS);
+////			 }
+//		 }
+//	 }
+
+#if !self_test
 	// if(y>15){
+//	 if(RECIEVE_VALID_DATA[7] != 'C')
+//	 {
 		s= ( ( (y*y) ) / (2*z) )/2;
-		// }
 
-	if((TOTAL_MICROSTEP+s)>LIMIT)
-	{
-		SOFT_STOP();
-		if(TOTAL_MICROSTEP<LIMIT){
-		Run(FORWARD_DIR, step_s_2_Speed(20));}
 
-	}
-//	if((TOTAL_MICROSTEP)<6000)
+//		// }
+//		if(MOTOR_DIR==FORWARD_DIR)
+//		{
+//
+//	if(((long)(TOTAL_MICROSTEP+s))>LIMIT_M)
+//	{
+//		SOFT_STOP();
+//		if(TOTAL_MICROSTEP<LIMIT_M){
+//		Run(FORWARD_DIR, step_s_2_Speed(20));
+//		}
+//		else if(TOTAL_MICROSTEP>=LIMIT_M)
+//		{
+//		Run(BACKWARD_DIR, step_s_2_Speed(0));
+//		}
+//
+//	}
+//		}
+//		 if(MOTOR_DIR==BACKWARD_DIR){
+//			if((TOTAL_MICROSTEP-s)<0)
+//			{
+//				SOFT_STOP();
+//				if(TOTAL_MICROSTEP > 0){
+//				Run(BACKWARD_DIR, step_s_2_Speed(20));}
+//
+//			}
+//				}
+
+//	 }
+//	if((TOTAL_MICROSTEP)<LIMIT)
 //	{
 //
 //		Run(FORWARD_DIR, step_s_2_Speed(1550));
@@ -393,7 +598,7 @@ void SystemClock_Config(void)
   * @retval None
   */
 static void MX_SPI1_Init(void)
-{
+ {
 
   /* USER CODE BEGIN SPI1_Init 0 */
 
@@ -633,9 +838,272 @@ crc_t CRC_CHECK_decode(crc_t* message, crc_t polynomial, int nBytes )
 //	return (remainder);/* The final remainder is the CRC result. */
 }
 
+void UNL_freeride()
+{
+	sp=((RECIEVE_VALID_DATA[4]<<8)|RECIEVE_VALID_DATA[5]);
+	switch(RECIEVE_VALID_DATA[1])
+	{
+	case 'F':
+		Run(FORWARD_DIR, step_s_2_Speed(sp));
+		break;
+	case 'B':
+		Run(BACKWARD_DIR, step_s_2_Speed(sp));
+			break;
+	case 'S':
+		SOFT_STOP();
+			break;
+
+	}
 
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+}
+
+
+void MAN_freeride()
+{
+	sp=((RECIEVE_VALID_DATA[4]<<8)|RECIEVE_VALID_DATA[5]);
+		switch(RECIEVE_VALID_DATA[1])
+		{
+		case 'F':
+			if((TOTAL_MICROSTEP+s)>=(LIMIT_M-1)){SOFT_STOP();}
+			else{Run(FORWARD_DIR, step_s_2_Speed(sp));}
+
+
+			break;
+		case 'B':
+
+//			if((TOTAL_MICROSTEP)>= LIMIT_M ){
+//			Run(BACKWARD_DIR, step_s_2_Speed(50));
+//			HAL_Delay(50);
+//			}
+			if((TOTAL_MICROSTEP-s)<=1){SOFT_STOP();}
+			else{Run(BACKWARD_DIR, step_s_2_Speed(sp));}
+				break;
+		case 'S':
+			SOFT_STOP();
+				break;
+
+		}
+
+
+
+}
+
+void MAN_Videoloop()
+{
+	sp=((RECIEVE_VALID_DATA[4]<<8)|RECIEVE_VALID_DATA[5]);
+
+//	MOTOR_DIR
+
+	if(TOTAL_MICROSTEP>=0 && toggle==1)
+			{
+				if((TOTAL_MICROSTEP+s)>=(LIMIT_M-1))
+				{
+					SOFT_STOP();
+				}
+				else
+				{
+					Run(FORWARD_DIR, step_s_2_Speed(sp));
+				}
+				if(TOTAL_MICROSTEP>=(LIMIT_M))
+				{
+					SOFT_STOP();
+					while(MOTOR_STATUS != 0)
+					{
+						MOTOR_STATUS_RAW_DATA = GET_STATUS();
+					}
+//					HAL_Delay(500);
+					 if(DAMPING != PREVIOUS_DAMPING)
+						  {
+					//		  SOFT_STOP();
+					//		  HAL_Delay(100);
+							 if(MOTOR_STATUS==0){
+							  Set_param(L6470_ACC, 		DAMPING, L6470_ACC_LEN); // min damping 0x91 //max damping 0x0a //ffa
+							  Set_param(L6470_DEC, 		DAMPING, L6470_DEC_LEN);
+							  PREVIOUS_DAMPING = DAMPING;
+							 }
+						  }
+					toggle=0;
+				}
+			}
+
+
+	else if(TOTAL_MICROSTEP<=(LIMIT_M) && toggle == 0 )
+	{
+		if((TOTAL_MICROSTEP-s)<=1){SOFT_STOP();}
+		else{Run(BACKWARD_DIR, step_s_2_Speed(sp));}
+		if(TOTAL_MICROSTEP<=0)
+		{
+			SOFT_STOP();
+			while(MOTOR_STATUS != 0)
+			{
+				MOTOR_STATUS_RAW_DATA = GET_STATUS();
+			}
+//			HAL_Delay(500);
+			 if(DAMPING != PREVIOUS_DAMPING)
+				  {
+			//		  SOFT_STOP();
+			//		  HAL_Delay(100);
+					 if(MOTOR_STATUS==0){
+					  Set_param(L6470_ACC, 		DAMPING, L6470_ACC_LEN); // min damping 0x91 //max damping 0x0a //ffa
+					  Set_param(L6470_DEC, 		DAMPING, L6470_DEC_LEN);
+					  PREVIOUS_DAMPING = DAMPING;
+					 }
+				  }
+			toggle=1;
+		}
+	}
+
+}
+
+
+void UNL_Animation()
+{
+//	sp=((RECIEVE_VALID_DATA[4]<<8)|RECIEVE_VALID_DATA[5]);
+	long long int steps_to_move=0,final_move_position=0;
+//	 movement_is_pending=0;
+	final_move_position =  RECIEVE_VALID_DATA[17] << 56;
+	final_move_position |= RECIEVE_VALID_DATA[18] << 48;
+	final_move_position |= RECIEVE_VALID_DATA[19] << 40;
+	final_move_position |= RECIEVE_VALID_DATA[20] << 32;
+	final_move_position |= RECIEVE_VALID_DATA[21] << 24;
+	final_move_position |= RECIEVE_VALID_DATA[22] << 16;
+	final_move_position |= RECIEVE_VALID_DATA[23] << 8;
+	final_move_position |= RECIEVE_VALID_DATA[24];
+
+	if(RECIEVE_VALID_DATA[25] == '-')
+	{
+		final_move_position = (final_move_position)*(-1);
+	}
+
+
+	if(  TOTAL_MICROSTEP < final_move_position) // forword
+	{
+		//if((TOTAL_MICROSTEP)<(final_move_position)){Run(FORWARD_DIR, step_s_2_Speed(15));}
+		if((TOTAL_MICROSTEP+s)>=(final_move_position-1)){SOFT_STOP();}
+		else{Run(FORWARD_DIR, step_s_2_Speed(1550));}
+
+
+	}
+	else if(TOTAL_MICROSTEP > final_move_position  )  // backword
+	{
+//		if((TOTAL_MICROSTEP)>(final_move_position)){Run(BACKWARD_DIR, step_s_2_Speed(15));}
+		if((TOTAL_MICROSTEP-s)<= final_move_position+1){SOFT_STOP();}
+		else{Run(BACKWARD_DIR, step_s_2_Speed(1550));}
+
+	}
+	else if(final_move_position == TOTAL_MICROSTEP )
+	{
+		SOFT_STOP();
+	}
+
+//	LIMIT_M=CURRENT_POSITION;
+//	if(RECIEVE_VALID_DATA[25] == 'M'  && movement_is_pending == 0) // M or S
+//	{
+//		final_move_position = TOTAL_MICROSTEP+steps_to_move;
+//		movement_is_pending=1;
+//	}
+
+//	else if(RECIEVE_VALID_DATA[25] == 'S') // M or S
+//		{
+//			 movement_is_pending=0;
+//		}
+
+//	if(movement_is_pending==1)
+//	{
+//		switch(RECIEVE_VALID_DATA[1])
+//		{
+//		case 'F':
+//			if((TOTAL_MICROSTEP+s)>=(final_move_position-1)){SOFT_STOP();}
+//			else{Run(FORWARD_DIR, step_s_2_Speed(1550));}
+//
+//
+//			break;
+//		case 'B':
+//
+//
+//			if((TOTAL_MICROSTEP-s)<=1){SOFT_STOP();}
+//			else{Run(BACKWARD_DIR, step_s_2_Speed(1550));}
+//			break;
+//		case 'S':
+//			SOFT_STOP();
+//			break;
+//
+//		}
+//		if(TOTAL_MICROSTEP  >= final_move_position ){SOFT_STOP();movement_is_pending=0;}
+//	}
+
+
+}
+
+
+void MAN_Animation()
+{
+//	sp=((RECIEVE_VALID_DATA[4]<<8)|RECIEVE_VALID_DATA[5]);
+	long long int steps_to_move=0,final_move_position=0;
+//	 movement_is_pending=0;
+	final_move_position =  RECIEVE_VALID_DATA[17] << 56;
+	final_move_position |= RECIEVE_VALID_DATA[18] << 48;
+	final_move_position |= RECIEVE_VALID_DATA[19] << 40;
+	final_move_position |= RECIEVE_VALID_DATA[20] << 32;
+	final_move_position |= RECIEVE_VALID_DATA[21] << 24;
+	final_move_position |= RECIEVE_VALID_DATA[22] << 16;
+	final_move_position |= RECIEVE_VALID_DATA[23] << 8;
+	final_move_position |= RECIEVE_VALID_DATA[24];
+
+	if(RECIEVE_VALID_DATA[25] == '-')
+	{
+		final_move_position = (final_move_position)*(-1);
+	}
+if(final_move_position<0){final_move_position=0;}
+if(final_move_position>LIMIT_M){final_move_position=LIMIT_M;}
+
+	if(  TOTAL_MICROSTEP < final_move_position) // forword
+	{
+		//if((TOTAL_MICROSTEP)<(final_move_position)){Run(FORWARD_DIR, step_s_2_Speed(15));}
+		if((TOTAL_MICROSTEP+s)>=(final_move_position-1)){SOFT_STOP();}
+		else{Run(FORWARD_DIR, step_s_2_Speed(1550));}
+
+
+	}
+	else if(TOTAL_MICROSTEP > final_move_position  )  // backword
+	{
+//		if((TOTAL_MICROSTEP)>(final_move_position)){Run(BACKWARD_DIR, step_s_2_Speed(15));}
+		if((TOTAL_MICROSTEP-s)<= final_move_position+1){SOFT_STOP();}
+		else{Run(BACKWARD_DIR, step_s_2_Speed(1550));}
+
+	}
+	else if(final_move_position == TOTAL_MICROSTEP )
+	{
+		SOFT_STOP();
+	}
+
+
+
+}
+void Limit_setting()
+{
+	if(RECIEVE_VALID_DATA[7]== 'L')
+	{
+
+		CURRENT_POSITION =  RECIEVE_VALID_DATA[8] << 56;
+		CURRENT_POSITION |= RECIEVE_VALID_DATA[9] << 48;
+		CURRENT_POSITION |= RECIEVE_VALID_DATA[10] << 40;
+		CURRENT_POSITION |= RECIEVE_VALID_DATA[11] << 32;
+		CURRENT_POSITION |= RECIEVE_VALID_DATA[12] << 24;
+		CURRENT_POSITION |= RECIEVE_VALID_DATA[13] << 16;
+		CURRENT_POSITION |= RECIEVE_VALID_DATA[14] << 8;
+		CURRENT_POSITION |= RECIEVE_VALID_DATA[15];
+		LIMIT_M=CURRENT_POSITION;
+		if(RECIEVE_VALID_DATA[16]=='-'){CURRENT_POSITION=0;}
+		//CURRENT_POSITION
+	}
+
+}
+
+
+
+ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 
 	if(counter>1){}
