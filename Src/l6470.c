@@ -14,8 +14,8 @@
  uint32_t total_steps=0;
  _Bool previous_dir=1;
  uint8_t previous_status=0;
- long CURRENT_POSITION=0,PREVIOUS_POSITION=0,Steps_moved=0;
-
+ int64_t CURRENT_POSITION=0,PREVIOUS_POSITION=0,Steps_moved=0;
+ int64_t remaining_steps=0;
 void Spi_init()
 {
 	 HAL_GPIO_WritePin(SPI1_SS_GPIO_Port, SPI1_SS_Pin, 1);
@@ -452,23 +452,120 @@ uint32_t GET_SPEED(void)
 
 uint32_t GET_DEC(void)
 {
+
+//	int x = MOTOR_STATUS;
 	return Get_param(L6470_DEC);
 
 }
- long Read_total_steps(_Bool direction,uint8_t status)
+
+uint32_t GET_ACC(void)
+{
+	return Get_param(L6470_ACC);
+
+}
+int64_t Read_total_steps(_Bool direction,uint8_t status)
 {
 
-	if((previous_dir!=direction) || ((previous_status!=status)&& (status==0)))
+
+	if((previous_dir!=direction) /*|| ((previous_status!=status)&& (status==0))*/)
 	{
 
-		Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+
+//		remaining_steps = Get_param(L6470_ABS_POS);
+//		Steps_moved=(((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP));
+
+		/*///////////////////////////////////////////*/
+//		if(direction==BACKWARD_DIR)
+//			{
+//				uint32_t pos=Get_param(L6470_ABS_POS);
+//				if(pos==0){pos=4194303;}
+//				total_steps =(MAX_STEPS) - ((pos-128) % ((1 << 22)-128));
+//				Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+//		//		CURRENT_POSITION -= ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
+//				CURRENT_POSITION=PREVIOUS_POSITION-Steps_moved;
+//			}
+//			//total_steps = Get_param(L6470_ABS_POS);
+//			else if(direction==FORWARD_DIR)
+//			{
+//
+//				total_steps = Get_param(L6470_ABS_POS)%(1<<22);
+//				Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+//		//		CURRENT_POSITION += ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
+//				CURRENT_POSITION=PREVIOUS_POSITION+Steps_moved;
+//			}
+//
+
+
+
+
+		/*///////////////////////////////////////////*/
+
+
+
 		PREVIOUS_POSITION = CURRENT_POSITION;
 //		CURRENT_POSITION += ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
 //		if(direction==FORWARD_DIR){CURRENT_POSITION=CURRENT_POSITION+Steps_moved;}
 //		else if(direction==BACKWARD_DIR) {CURRENT_POSITION=CURRENT_POSITION-Steps_moved;}
 //		CURRENT_POSITION=CURRENT_POSITION+Steps_moved;
+//		previous_dir=direction;
 		previous_status=status;
-		total_revolutions=0;total_steps=0;RESET_POS();}
+
+		total_revolutions=0;total_steps=0;
+//		previous
+//		remaining_steps = Get_param(L6470_ABS_POS);
+		RESET_POS();
+	}
+	if(/*(previous_dir!=direction) || */((previous_status!=status)&& (status==0)))
+		{
+
+
+			remaining_steps = Get_param(L6470_ABS_POS);
+			Steps_moved=(((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP));
+
+			/*///////////////////////////////////////////*/
+			if(direction==BACKWARD_DIR)
+				{
+					uint32_t pos=Get_param(L6470_ABS_POS);
+					if(pos==0){pos=4194303;}
+					total_steps =(MAX_STEPS) - ((pos-127) % ((1 << 22)-127));
+					Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+			//		CURRENT_POSITION -= ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
+					CURRENT_POSITION=PREVIOUS_POSITION-Steps_moved;
+				}
+				//total_steps = Get_param(L6470_ABS_POS);
+				else if(direction==FORWARD_DIR)
+				{
+
+					total_steps = Get_param(L6470_ABS_POS)%(1<<22);
+					Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
+			//		CURRENT_POSITION += ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
+					CURRENT_POSITION=PREVIOUS_POSITION+Steps_moved;
+				}
+
+
+
+
+
+			/*///////////////////////////////////////////*/
+
+
+
+			PREVIOUS_POSITION = CURRENT_POSITION;
+	//		CURRENT_POSITION += ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
+	//		if(direction==FORWARD_DIR){CURRENT_POSITION=CURRENT_POSITION+Steps_moved;}
+	//		else if(direction==BACKWARD_DIR) {CURRENT_POSITION=CURRENT_POSITION-Steps_moved;}
+	//		CURRENT_POSITION=CURRENT_POSITION+Steps_moved;
+	//		previous_dir=direction;
+			previous_status=status;
+
+			total_revolutions=0;total_steps=0;
+	//		previous
+	//		remaining_steps = Get_param(L6470_ABS_POS);
+			RESET_POS();
+		}
+
+
+
 	if(status!=0){
 	previous_dir=direction;
 	previous_status=status;
@@ -476,7 +573,7 @@ uint32_t GET_DEC(void)
 	{
 		uint32_t pos=Get_param(L6470_ABS_POS);
 		if(pos==0){pos=4194303;}
-		total_steps =(MAX_STEPS) - ((pos-128) % ((1 << 22)-128));
+		total_steps =(MAX_STEPS) - ((pos-127) % ((1 << 22)-127));
 		Steps_moved=((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
 //		CURRENT_POSITION -= ((CURRENT_POSITION +Steps_moved)- (Steps_moved-1));
 		CURRENT_POSITION=PREVIOUS_POSITION-Steps_moved;
@@ -491,15 +588,19 @@ uint32_t GET_DEC(void)
 		CURRENT_POSITION=PREVIOUS_POSITION+Steps_moved;
 	}
 
-	if (total_steps > (MAX_STEPS-128)) {
+	if (total_steps > (MAX_STEPS-127)) {
 	    	uint32_t Reminder_step = Get_param(L6470_ABS_POS);
 	    	RESET_POS();
+
 	    	total_steps=Reminder_step;
 	        total_steps -= Reminder_step;
 	        total_revolutions++;
 	    }
 //	   return ((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
 	}
+//	else{
+//	remaining_steps = Get_param(L6470_ABS_POS);
+//}
 	return CURRENT_POSITION;
 	//return ((total_revolutions* MAX_STEPS + total_steps)/MICROSTEPS_PER_STEP);
 //	else if(status==0)
@@ -557,3 +658,5 @@ uint32_t GET_DEC(void)
 
 }
 
+uint32_t Get_speed_step_s()// returns the speed in steps/sec
+{return Speed_2_step_s(GET_SPEED());}

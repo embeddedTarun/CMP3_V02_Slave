@@ -7,6 +7,8 @@
 
 #ifndef INC_L6470_H_
 #define INC_L6470_H_
+#include "math.h"
+//#include "my_macros.h"
 #include "main.h"
 #include "stm32f1xx_hal.h"  // Adjust for your STM32 family
 ///#include "stm32f1xx_hal_spi.h"
@@ -14,7 +16,7 @@
 extern SPI_HandleTypeDef hspi1;
 
 
-#define MAX_STEPS 4194175//4194175 //4194303
+#define MAX_STEPS 4194303//4194175 //4194303
 #define MICROSTEPS_PER_STEP (128*2)
 //extern uint32_t total_revolutions;
 //extern uint32_t total_steps;
@@ -185,9 +187,10 @@ void Spi_init();
 
  uint32_t GET_SPEED(void);
  uint32_t GET_DEC(void);
+ uint32_t GET_ACC(void);
 
- long Read_total_steps(_Bool direction,uint8_t status);
-
+ int64_t Read_total_steps(_Bool direction,uint8_t status);
+ uint32_t Get_speed_step_s();
 
 
 

@@ -31,7 +31,9 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "string.h"
+#include "math.h"
+#include "my_macros.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
